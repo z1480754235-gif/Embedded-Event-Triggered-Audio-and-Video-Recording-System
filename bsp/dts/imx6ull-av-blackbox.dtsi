@@ -1,0 +1,230 @@
+#include <dt-bindings/input/input.h>
+#include <dt-bindings/interrupt-controller/irq.h>
+
+/ {
+    led_dev {
+        compatible = "smartmonitor,led0";
+        pinctrl-names = "default";
+        pinctrl-0 = <&pinctrl_led>;
+        led-gpios = <&gpio1 3 GPIO_ACTIVE_LOW>;
+        status = "okay";
+    };
+
+    key_input_dev {
+        compatible = "smartmonitor,key0";
+        pinctrl-names = "default";
+        pinctrl-0 = <&pinctrl_key>;
+        key-gpios = <&gpio1 18 GPIO_ACTIVE_LOW>;
+        linux,code = <KEY_ENTER>;
+        debounce-interval = <20>;
+        status = "okay";
+    };
+
+    sound {
+        compatible = "avblackbox,imx6ull-wm8960";
+        model = "blackbox-audio";
+        
+        /delete-property/ asrc-controller;
+
+        /* sink source */
+        audio-routing =
+        "Headphone Jack", "HP_L",
+        "Headphone Jack", "HP_R",
+        "Ext Spk", "SPK_LP",
+        "Ext Spk", "SPK_LN",
+        "Ext Spk", "SPK_RP",
+        "Ext Spk", "SPK_RN",
+        "RINPUT2", "Mic Jack", /* LINE_IN 插孔 */
+        "LINPUT3", "Mic Jack",
+        "LINPUT1", "Main MIC",
+        "LINPUT2", "Main MIC",
+        "Mic Jack", "MICB",
+        "Main MIC", "MICB";
+    };
+};
+
+/* GT911 CT_RST：SNVS_TAMPER9，GPIO5_IO09 */
+&iomuxc_snvs {
+    imx6ul-evk {
+        pinctrl_gt911_reset: gt911resetgrp {
+            fsl,pins = <
+                MX6ULL_PAD_SNVS_TAMPER9__GPIO5_IO09    0X10B0
+            >;
+        };
+    };
+};
+
+&iomuxc {
+    imx6ul-evk {
+		/* UART2 已禁用，删除 BSP 中引脚列表为空的组 */
+		/delete-node/ uart2grp;
+		/delete-node/ uart2dtegrp;
+    };
+
+    imx6u-evk {
+        pinctrl_led: ledgrp {
+            fsl,pins = <
+                MX6UL_PAD_GPIO1_IO03__GPIO1_IO03    0X10B0
+            >;
+        };
+
+        pinctrl_ov5640_ctrl: ov5640ctrlgrp {
+            fsl,pins = <
+                MX6UL_PAD_GPIO1_IO02__GPIO1_IO02  	0X10B0
+				MX6UL_PAD_GPIO1_IO04__GPIO1_IO04	0X10B0
+            >;
+        };
+
+        pinctrl_key: keygrp {
+            fsl,pins = <
+                MX6UL_PAD_UART1_CTS_B__GPIO1_IO18    0XF080
+            >;
+        };
+
+        pinctrl_icm20608: icm20608grp {
+            fsl,pins = <
+                MX6UL_PAD_UART2_TX_DATA__GPIO1_IO20    0X10B0
+                MX6UL_PAD_UART2_RX_DATA__ECSPI3_SCLK   0X10B1
+                MX6UL_PAD_UART2_RTS_B__ECSPI3_MISO     0X10B1
+                MX6UL_PAD_UART2_CTS_B__ECSPI3_MOSI     0X10B1
+            >;
+        };
+
+        pinctrl_uart3: uart3grp {
+            fsl,pins = <
+                MX6UL_PAD_UART3_TX_DATA__UART3_DCE_TX    0X1B0B1
+                MX6UL_PAD_UART3_RX_DATA__UART3_DCE_RX    0X1B0B1
+            >;
+        };
+
+        pinctrl_gt911_int: gt911intgrp {
+            fsl,pins = <
+                MX6UL_PAD_GPIO1_IO09__GPIO1_IO09    0X00B0
+            >;
+        };
+    };
+};
+
+&i2c1 {
+    status = "okay";
+
+    ap3216c@1e {
+        compatible = "liteon,ap3216c";
+        reg = <0x1e>;
+        status = "okay";
+    };
+
+    codec: wm8960@1a {
+        compatible = "wlf,wm8960";
+        reg = <0x1a>;
+        clocks = <&clks IMX6UL_CLK_SAI2>; /* 这里是指 mclk = 12.288MHz */
+        clock-names = "mclk";
+        wlf,shared-lrclk;
+        status = "okay";
+    };
+};
+
+&uart2 {
+    status = "disabled";
+};
+
+&ecspi3 {
+    fsl,spi-num-chipselects = <1>; /* 一个片选 */
+    cs-gpios = <&gpio1 20 GPIO_ACTIVE_LOW>;
+    pinctrl-names = "default";
+    pinctrl-0 = <&pinctrl_icm20608>;
+    status = "okay";
+
+    icm20608@0 {
+        compatible = "invensense,icm20608";
+        reg = <0>;
+        spi-max-frequency = <1000000>;
+        status = "okay";
+    };
+};
+
+&uart3 {
+    pinctrl-names = "default";
+    pinctrl-0 = <&pinctrl_uart3>;
+    status = "okay";
+};
+
+/* 保留 SD 卡检测和 VSELECT，释放 GPIO1_IO09 */
+&pinctrl_hog_1 {
+    fsl,pins = <
+        MX6UL_PAD_UART1_RTS_B__GPIO1_IO19       0X17059
+        MX6UL_PAD_GPIO1_IO05__USDHC1_VSELECT    0X17059
+    >;
+};
+
+/* SD 卡固定 3.3V 供电，解除对 CT_INT 引脚的错误占用 */
+&reg_sd1_vmmc {
+    /delete-property/ gpio;
+    /delete-property/ enable-active-high;
+
+    regulator-always-on;
+};
+
+/* 删除原 BSP 放在 I2C2下的 WM8960 */
+&i2c2 {
+    clock-frequency = <100000>;
+    status = "okay";
+    /delete-node/ wm8960@1a;
+
+    gt911: touchscreen@14 {
+        compatible = "goodix,gt911";
+        reg = <0x14>;
+
+        pinctrl-names = "default";
+        pinctrl-0 = <&pinctrl_gt911_int
+                     &pinctrl_gt911_reset>;
+
+        /* 中断来自 GPIO1 控制器 */
+        interrupt-parent = <&gpio1>;
+
+        /* 由驱动读取 0x804D 后设置实际触发方式 */
+        interrupts = <9 IRQ_TYPE_NONE>;
+
+        irq-gpios = <&gpio1 9 GPIO_ACTIVE_HIGH>;
+        reset-gpios = <&gpio5 9 GPIO_ACTIVE_LOW>;
+
+        touchscreen-size-x = <1024>;
+        touchscreen-size-y = <600>;
+
+        status = "okay";
+    };
+
+	ov5640: ov5640@3c {
+        compatible = "avblackbox,gravityov5640";
+		pinctrl-names = "default";
+		pinctrl-0 = <&pinctrl_csi1
+					 &pinctrl_ov5640_ctrl>;
+		
+		pwn-gpios = <&gpio1 4 GPIO_ACTIVE_HIGH>;
+		rst-gpios = <&gpio1 2 GPIO_ACTIVE_LOW>;
+
+		status = "okay";
+	};
+};
+
+/* 关闭不用的片内电阻触摸控制器 */
+&tsc {
+    status = "disabled";
+};
+
+&pinctrl_csi1 {
+    fsl,pins = <
+        MX6UL_PAD_CSI_PIXCLK__CSI_PIXCLK	0x1b088
+        MX6UL_PAD_CSI_VSYNC__CSI_VSYNC		0x1b088
+        MX6UL_PAD_CSI_HSYNC__CSI_HSYNC		0x1b088
+        MX6UL_PAD_CSI_DATA00__CSI_DATA02	0x1b088
+        MX6UL_PAD_CSI_DATA01__CSI_DATA03	0x1b088
+        MX6UL_PAD_CSI_DATA02__CSI_DATA04	0x1b088
+        MX6UL_PAD_CSI_DATA03__CSI_DATA05	0x1b088
+        MX6UL_PAD_CSI_DATA04__CSI_DATA06	0x1b088
+        MX6UL_PAD_CSI_DATA05__CSI_DATA07	0x1b088
+        MX6UL_PAD_CSI_DATA06__CSI_DATA08	0x1b088
+        MX6UL_PAD_CSI_DATA07__CSI_DATA09	0x1b088
+    >;
+};
+
